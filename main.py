@@ -1,67 +1,36 @@
 import classes as c
 import time as t
 
-def isValid(block_chain):
-    first_block = block_chain[0]
-    prev_block = first_block
-    for current_block in block_chain[1:]:
-        checked_block = c.Block(current_block.data, prev_block.hash, 
-                current_block.time_stamp, current_block.nonce)
-        if current_block.hash != checked_block.hash:
-            return False
-        prev_block = current_block
-    return True
-
-
-block_chain = []
-difficulty = 4
-
-"""
-start_timer = t.time()
-fb = c.Block("First", "0", t.time())
-print("Mining first")
-fb.mineBlock(difficulty)
-end_timer = t.time()
-fb.addToBC(block_chain)
-print(f"Mining of block with {difficulty} zeros in hash took: {end_timer - start_timer}s")
-
-
-sb = c.Block("Second", fb.hash, t.time())
-print("Mining second")
-sb.mineBlock(difficulty)
-sb.addToBC(block_chain)
-
-tb = c.Block("Third", sb.hash, t.time())
-print("Mining third")
-tb.mineBlock(difficulty)
-tb.addToBC(block_chain)
-
-for block in block_chain:
-    print(block)
-
-print(f"Checking blockchain validity: {isValid(block_chain)}")
-
-print(f"Changing data of one block in blockchain")
-
-eb = sb
-eb.changeData("Evil data")
-eb.mineBlock(difficulty)
-eb.insertToBC(block_chain, 1)
-
-print(f"Checking blockchain validity: {isValid(block_chain)}")
-"""
+bc = c.BlockChain("AkrCoin", 4)
 
 walletA = c.Wallet("Alice")
 walletB = c.Wallet("Bob")
-walletA.recieveFunds(10, "0")
+
+initial_transaction = c.Transaction(None, walletA, 100, 
+        [c.TransactionOutput(walletA, 100, "0")])
+initialb = c.Block(initial_transaction, "0", t.time(), 0)
+bc.addToBC(initialb)
 print(f"A: {walletA.getBalance()}")
 print(f"B: {walletB.getBalance()}")
-walletA.sendFunds(walletB, 2)
+
+firstb = c.Block(walletA.sendFunds(walletB, 20), bc.getLastHash(), t.time(), 0)
+bc.addToBC(firstb)
 print(f"A: {walletA.getBalance()}")
 print(f"B: {walletB.getBalance()}")
-walletB.sendFunds(walletA, 1)
+
+secondb = c.Block(walletA.sendFunds(walletB, 10), bc.getLastHash(), t.time(), 0)
+bc.addToBC(secondb)
 print(f"A: {walletA.getBalance()}")
 print(f"B: {walletB.getBalance()}")
-walletB.sendFunds(walletB, 1)
+
+thirdb = c.Block(walletB.sendFunds(walletA, 30), bc.getLastHash(), t.time(), 0)
+bc.addToBC(thirdb)
 print(f"A: {walletA.getBalance()}")
 print(f"B: {walletB.getBalance()}")
+
+fourthb = c.Block(walletB.sendFunds(walletA, 30), bc.getLastHash(), t.time(), 0)
+bc.addToBC(fourthb)
+print(f"A: {walletA.getBalance()}")
+print(f"B: {walletB.getBalance()}")
+
+print(bc)

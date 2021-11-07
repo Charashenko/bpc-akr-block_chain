@@ -2,6 +2,42 @@ import time as t
 import hashlib as hl
 import json
 
+class BlockChain:
+    def __init__(self, name, difficulty):
+        self.name = name
+        self.difficulty = difficulty
+        self.blocks = []
+
+    def isValid(self):
+        first_block = self.blocks[0]
+        prev_block = first_block
+        for current_block in self.blocks[1:]:
+            checked_block = c.Block(current_block.data, prev_block.hash, 
+                current_block.time_stamp, current_block.nonce)
+            if current_block.hash != checked_block.hash:
+                return False
+            prev_block = current_block
+        return True
+    
+    def addToBC(self, block):
+        if(block.mineBlock(self.difficulty)):
+            self.blocks.append(block)
+
+    def insertToBC(self, block, index):
+        self.blocks[index] = block
+
+    def getLastHash(self):
+        return self.blocks[-1].hash
+
+    def __str__(self):
+        return json.dumps(self.dict(), indent=4)
+    
+    def dict(self):
+        blocks = []
+        for block in self.blocks:
+            blocks.append(block.dict())
+        return blocks
+
 class Block:
     def __init__(self, data, prev_hash, time_stamp, nonce=0):
         self.prev_hash = prev_hash
@@ -10,13 +46,14 @@ class Block:
         self.nonce = nonce
         self.hash = self.hashBlock()
 
-    def __str__(self):
-        return json.dumps({
-            "data" : str(self.data), 
-            "time_stamp": self.time_stamp,
+    def dict(self):
+        return {
+            "data" : self.data.dict(), 
+            "time_stamp": str(self.time_stamp),
             "previous_hash" : str(self.prev_hash),
             "hash" : str(self.hash),
-            "nonce" : str(self.nonce)}, indent=4)
+            "nonce" : str(self.nonce)
+        }
 
     def hashBlock(self):
         msg = hl.sha256()
@@ -26,17 +63,21 @@ class Block:
         msg.update(str(self.nonce).encode("utf-8"))
         return msg.hexdigest()
 
-    def addToBC(self, block_chain):
-        block_chain.append(self)
-
-    def insertToBC(self, block_chain, index):
-        block_chain[index] = self 
-    
     def mineBlock(self, diff):
+        if not self.data:
+            print("Invalid transaction")
+            return False
         while self.hash[:diff] != diff*"0":
             self.nonce = self.nonce + 1
             self.hash = self.hashBlock()
-    
+        outputs = self.data.outputs
+        if len(outputs) == 2:
+            self.data.sender.recieveFunds(outputs[0])
+            self.data.reciepient.recieveFunds(outputs[1])
+        else:
+            self.data.reciepient.recieveFunds(outputs[0])
+        return True
+
     def changeData(self, data):
         self.data = data
         self.hash = self.hashBlock()
@@ -46,21 +87,35 @@ class Wallet:
     def __init__(self, name):
         self.name = name
         self.utxo = []
-    
-    def sendFunds(self, reciepient, value):
-        transaction = Transaction(self, reciepient, value, self.utxo)
-        inputs = transaction.checkNeededFunds()
+   
+    def __str__(self):
+        return self.name
+
+    def checkNeededFunds(self, value): 
+        needed_inputs = []
         balance = 0
-        if len(inputs) == 0:
+        for input_transaction in self.utxo:
+            if input_transaction.reciepient.name == self.name:
+                balance += input_transaction.value
+                needed_inputs.append(input_transaction)
+                if balance >= value:
+                    break
+        if balance >= value:
+            for input_transaction in needed_inputs:
+                self.utxo.remove(input_transaction)
+            return needed_inputs
+        else:
+            return []
+
+    def sendFunds(self, reciepient, value):
+        inputs = self.checkNeededFunds(value)
+        if not inputs:
             print("Not enough funds!")
             return
-        for input_transaction in inputs:
-            balance += input_transaction.value
-        self.recieveFunds(balance - value, transaction.id)
-        reciepient.recieveFunds(value, transaction.id)
+        transaction = Transaction(self, reciepient, value, inputs)
+        return transaction
 
-    def recieveFunds(self, value, parent_transaction_id):
-        output = TransactionOutput(self, value, parent_transaction_id)
+    def recieveFunds(self, output):
         self.utxo.append(output)
     
     def getBalance(self):
@@ -77,6 +132,7 @@ class Transaction:
         self.value = value
         self.inputs = inputs
         self.id = self.calculateHash()
+        self.generateOutputs()
 
     def calculateHash(self):
         msg = hl.sha256()
@@ -85,19 +141,33 @@ class Transaction:
         msg.update(str(self.value).encode("utf-8"))
         return msg.hexdigest()
 
-    def checkNeededFunds(self): # Checks if sender has needed funds and returns required transactions
-        needed_inputs = []
+    def generateOutputs(self):
         balance = 0
-        for input_transaction in self.sender.utxo:
-            if input_transaction.reciepient.name == self.sender.name:
-                balance += input_transaction.value
-                needed_inputs.append(input_transaction)
-                if balance >= self.value:
-                    break
-        if balance >= self.value:
-            for input_transaction in needed_inputs:
-                self.sender.utxo.remove(input_transaction)
-        return needed_inputs
+        for input_transaction in self.inputs:
+            balance += input_transaction.value
+        return_to_sender = balance - self.value
+        reciepient_output = TransactionOutput(self.reciepient, self.value, self.id)
+        if return_to_sender != 0:
+            sender_output = TransactionOutput(self.sender, return_to_sender, self.id)
+            self.outputs = [sender_output, reciepient_output]
+        else:
+            self.outputs = [reciepient_output]
+
+    def dict(self):
+        inputs = []
+        for inp in self.inputs:
+            inputs.append(inp.dict())
+        outputs = []
+        for out in self.outputs:
+            outputs.append(out.dict())
+        return {
+            "id" : str(self.id),
+            "sender" : str(self.sender),
+            "reciepient": str(self.reciepient),
+            "value" : str(self.value),
+            "inputs" : inputs,
+            "outputs" : outputs
+        }
 
 
 class TransactionInput:
@@ -115,3 +185,12 @@ class TransactionOutput:
         msg.update(str(value).encode("utf-8"))
         msg.update(str(parent_transaction_id).encode("utf-8"))
         self.id = msg.hexdigest()
+    
+    def dict(self):
+        return {
+            "id" : str(self.id),
+            "reciepient" : str(self.reciepient),
+            "value" : str(self.value),
+            "parent_transaction_id" : str(self.parent_transaction_id)
+        }
+
